@@ -1,11 +1,19 @@
 -module(protocol).
 
+-export([encode/1, decode/1]).
 
-
-encode(Message) ->
-    EJson = #{},
-    jiffy:encode(EJson).
+ encode(Message) ->
+     DataMap = put_values(Message),
+     jiffy:encode(DataMap).
 
 decode(Message) ->
-    EJson = jiffy:decode(),
-    sone_random_tranformation(EJson).
+    DataMap = jiffy:decode(Message, [return_maps]),
+    extract_values(DataMap).
+
+put_values({Username, Message}) ->
+    #{user => Username, message => Message}.
+
+extract_values(DataMap) ->
+    Username = maps:get(user, DataMap),
+    Message = maps:get(user, DataMap),
+    {Username, Message}.
