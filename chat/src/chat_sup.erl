@@ -29,8 +29,13 @@ init([]) ->
         intensity => 10,
         period => 10
     },
-    Server = #{
-        id => room,
-        start => {chat_server, start_link, []}
+    RoomManager = #{
+        id => manager,
+        type => worker,
+        start => {room_manager, start_link, []}
     },
-    {ok, {SupArgs, [Server]}}.
+    RoomSupervisor = #{
+        id => room_supervisor,
+        start => {room_sup, start_link, []}
+    },
+    {ok, {SupArgs, [RoomManager, RoomSupervisor]}}.

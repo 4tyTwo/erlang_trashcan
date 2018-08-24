@@ -1,19 +1,49 @@
 -module(protocol).
 
--export([encode/1, decode/1]).
+% Protocol encodes values as tuples
+% encodes tuples as JSONs and DECODS JSONs to messages for server
 
- encode(Message) ->
-     DataMap = put_values(Message),
-     jiffy:encode(DataMap).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-decode(Message) ->
-    DataMap = jiffy:decode(Message, [return_maps]),
-    extract_values(DataMap).
+-export([encode/2]).
+-export([encode/3]).
+-export([message_to_json/1]).
+-export([json_to_server_message/2]).
 
-put_values({Username, Message}) ->
-    #{user => Username, message => Message}.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-extract_values(DataMap) ->
-    Username = maps:get(user, DataMap),
-    Message = maps:get(user, DataMap),
-    {Username, Message}.
+-spec encode(atom(), chat_server:message()) ->
+        {atom(), chat_server:message()}.
+
+encode(Atom, Username) ->
+    {Atom, Username}.
+
+-spec encode(message, Username :: chat_server:username(), Message :: chat_server:message()) ->
+    {message, chat_server:username(), chat_server:message()}.
+
+encode(message, Username, Message) ->
+    {message, Username, Message}.
+
+message_to_json(Data) ->
+    DataMap = create_json_map(Data),
+    jiffy:encode(DataMap).
+
+json_to_server_message(Json, PID) ->
+    DataMap = jiffy:decode(Json, [return_maps]),
+    {Event, Message} = decode_client_map(DataMap),
+    {Event, Message, PID}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+create_json_map({message, Username, Message}) ->
+    #{event => send_message, user => Username, message => Message};
+create_json_map({Event, Username}) ->
+    #{event => Event, user => Username}.
+
+decode_client_map(DataMap) ->
+    Event = maps:get(<<"event">>, DataMap),
+    Message = maps:get(<<"body">>, DataMap),
+    {binary_to_atom(Event), Message}.
+
+binary_to_atom(Binary) ->
+    list_to_atom(binary_to_list(Binary)).
