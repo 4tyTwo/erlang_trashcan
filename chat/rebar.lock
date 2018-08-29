@@ -1,22 +1,18 @@
 {"1.1.0",
-[{<<"cowboy">>,
-  {git,"https://github.com/ninenines/cowboy",
-       {ref,"0c15b9216b7467390623db84e169b32c68e85bcb"}},
-  0},
- {<<"cowlib">>,
-  {git,"https://github.com/ninenines/cowlib",
-       {ref,"45f750db410a4b08c68d142ad0af839f544c5d3d"}},
-  1},
- {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.8">>},1},
+[{<<"cowboy">>,{pkg,<<"cowboy">>,<<"2.4.0">>},0},
+ {<<"cowlib">>,{pkg,<<"cowlib">>,<<"2.3.0">>},1},
+ {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
+ {<<"gun">>,{pkg,<<"gun">>,<<"1.1.0">>},0},
  {<<"jiffy">>,{pkg,<<"jiffy">>,<<"0.15.2">>},0},
- {<<"lager">>,{pkg,<<"lager">>,<<"3.2.1">>},0},
- {<<"ranch">>,
-  {git,"https://github.com/ninenines/ranch",
-       {ref,"a004ad710eddd0c21aaccc30d5633a76b06164b5"}},
-  1}]}.
+ {<<"lager">>,{pkg,<<"lager">>,<<"3.6.4">>},0},
+ {<<"ranch">>,{pkg,<<"ranch">>,<<"1.5.0">>},1}]}.
 [
 {pkg_hash,[
- {<<"goldrush">>, <<"2024BA375CEEA47E27EA70E14D2C483B2D8610101B4E852EF7F89163CDB6E649">>},
+ {<<"cowboy">>, <<"F1B72FABE9C8A5FC64AC5AC85FB65474D64733D1DF52A26FAD5D4BA3D9F70A9F">>},
+ {<<"cowlib">>, <<"BBD58EF537904E4F7C1DD62E6AA8BC831C8183CE4EFA9BD1150164FE15BE4CAA">>},
+ {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
+ {<<"gun">>, <<"66BE4EBB3A8018B2CA0216EB0C5FE89820F3CE3610E9EC0652F525690956F69F">>},
  {<<"jiffy">>, <<"DE266C390111FD4EA28B9302F0BC3D7472468F3B8E0ACEABFBEFA26D08CD73B7">>},
- {<<"lager">>, <<"EEF4E18B39E4195D37606D9088EA05BF1B745986CF8EC84F01D332456FE88D17">>}]}
+ {<<"lager">>, <<"CED6E98070FB4E58EE93174D006D46479C79844DF7FC17FA4FEFC1049A320D88">>},
+ {<<"ranch">>, <<"F04166F456790FEE2AC1AA05A02745CC75783C2BFB26D39FAF6AEFC9A3D3A58A">>}]}
 ].
