@@ -14,7 +14,6 @@
 
 -export([start_link/1]).
 -export([send/2]).
--export([stop/1]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPE EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -34,25 +33,18 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start_link(Id) ->
-    gen_server:start_link({local, Id}, ?MODULE, Id, []).
+    gen_server:start_link({global, Id}, ?MODULE, Id, []).
 
 send(Json, Source) ->
     ClientMessage = protocol:decode(Json),
     RoomId = protocol:room(ClientMessage),
     case room_manager:get_room(RoomId) of
         not_found ->
-            Reply = protocol:encode(error, <<"">>, <<"NO ROOM">>, <<"">>),
+            Reply = protocol:encode(error, <<"">>, <<"NO ROOM">>, no_room),
             inform(Reply, Source);
         _ ->
-            gen_server:cast(RoomId, {client_message, ClientMessage, Source})
+            gen_server:cast({global, RoomId}, {client_message, ClientMessage, Source})
     end.
-
--spec stop(atom()) ->
-    stopped | {error, no_room}.
-
-stop(RoomId) ->
-    gen_server:call(RoomId, stop),
-    stopped.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -139,9 +131,6 @@ handle_cast({client_message, {register, Username, _Message, _RoomId}, Source}, S
     % It actuay works, even if client sends message immediatly after calling for registration, wow!
     {noreply, NewState}.
 
-handle_call(stop, _From, State) ->
-    lager:info("Calling to terminate this room"),
-    {stop, normal, State};
 handle_call(_, _, State) ->
     {reply, ok, State}.
 
