@@ -1,9 +1,9 @@
 %%%-------------------------------------------------------------------
-%% @doc babel public API
+%% @doc Eva public API
 %% @end
 %%%-------------------------------------------------------------------
 
--module(babel_app).
+-module(eva_app).
 
 -behaviour(application).
 
@@ -13,17 +13,10 @@
 %%====================================================================
 %% API
 %%====================================================================
-start(_Type, _Args) ->
-    Dispatch = cowboy_router:compile([
-        {'_',
-        [
-            {"/", root_handler, []}
-        ]}
-    ]),
-    TransOpts = [{ip, {0, 0, 0, 0}}, {port, 7000}],
-    ProtoOpts = #{env => #{dispatch => Dispatch}},
-    {ok, _} = cowboy:start_clear(http, TransOpts, ProtoOpts),
-    babel_sup:start_link().
+
+start(_StartType, _StartArgs) ->
+    eva_sup:start_link().
+
 %%--------------------------------------------------------------------
 stop(_State) ->
     ok.
