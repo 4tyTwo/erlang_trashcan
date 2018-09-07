@@ -11,11 +11,15 @@
 -export([start_link/0]).
 -export([create_room/1]).
 -export([delete_room/1]).
--export([get_children/0]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPE EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+-export_type([error/0]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -type supervisor_args() :: supervisor:sup_flags().
+-type error() :: running | restarting | not_found | simple_one_for_one.
 -type child_args() :: supervisor:child_spec().
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -24,16 +28,10 @@
     {ok, pid()}.
 
 start_link() ->
-    supervisor:start_link({global, room_sup}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec get_children() ->
-    [{atom(), undefined | pid() | restarting, worker | supervisor, term()}].
-
-get_children() ->
-    supervisor:which_children({global, room_sup}).
-
--spec create_room(RoomId :: atom()) ->
-    created.
+-spec create_room(RoomId :: binary()) ->
+    ok | error.
 
 create_room(RoomId) ->
     ok = lager:notice("Creating room ~p", [RoomId]),
@@ -42,17 +40,27 @@ create_room(RoomId) ->
         type => worker,
         start => {chat_room, start_link, [RoomId]}
     },
-    _ = supervisor:start_child({global, room_sup}, Child),
-    created.
+    case supervisor:start_child(?MODULE, Child) of
+        {ok, _} ->
+            ok;
+        {ok, _, _} ->
+            ok;
+        {error, Error} ->
+            lager:notice("Supervisor can't start child with ~p", [Error]),
+            {error, Error}
+    end.
 
--spec delete_room(RoomId :: atom()) ->
-    deleted.
+-spec delete_room(RoomId :: binary()) ->
+    ok | {error, error()}.
 
 delete_room(RoomId) ->
     ok = lager:info("Room supervisor is trying to delete child ~p", [RoomId]),
-    _ = supervisor:terminate_child({global, room_sup}, RoomId),
-    _ = supervisor:delete_child({global, room_sup}, RoomId),
-    deleted.
+    case supervisor:terminate_child(?MODULE, RoomId) of
+        ok ->
+            supervisor:delete_child(?MODULE, RoomId);
+        {error, Error} ->
+            {error, Error}
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% CALLBACK FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -66,8 +74,9 @@ init([]) ->
         intensity => 10,
         period => 10
     },
-    Server = #{  %Single room at the start
-        id => room1,
-        start => {chat_room, start_link, [room1]}
+    Server = #{  % Single room at the start
+        id => <<"room1">>,
+        type => worker,
+        start => {chat_room, start_link, [<<"room1">>]}
     },
     {ok, {SupArgs, [Server]}}.

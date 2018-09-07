@@ -50,8 +50,8 @@ groups() ->
     config().
 
 init_per_suite(C) ->
-    C1 = [{default_room, room1},
-          {created_room, room2},
+    C1 = [{default_room, <<"room1">>},
+          {created_room, <<"room2">>},
           {register, <<"{\"user\":\"Igor\",\"room\":\"room1\",\"message\":\"Hello\",\"event\":\"register\"}">>},
           {send_message, <<"{\"user\":\"Igor\",\"room\":\"room1\",\"message\":\"Hello\",\"event\":\"send_message\"}">>}
          ] ++ C,
@@ -71,8 +71,7 @@ end_per_suite(C) ->
     config().
 
 init_per_group(room_management, C) ->
-    C1 = [{default_room, room1}, {created_room, room2}] ++ C,
-    C1.
+    C.
 
 -spec end_per_group(groupName() ,C :: config()) ->
     config().
@@ -86,32 +85,31 @@ end_per_group(room_management, C) ->
     config().
 
 get_room_list(C) ->
-    Default = get(default_room, C),
+    Default = ?config(default_room, C),
     [Default] = room_manager:get_rooms(),
-    ct:print("Room manager returned ~p", [Default]),
     C.
 
 -spec create_room(C :: config()) ->
     config().
 
 create_room(C) ->
-    Created = get(created_room, C),
-    created = room_manager:create_room(Created),
+    Created = ?config(created_room, C),
+    ok = room_manager:create_room(Created),
     C.
 
 -spec find_room(C :: config()) ->
     config().
 
 find_room(C) ->
-    Created = get(created_room, C),
-    _ = room_manager:get_room(Created),
+    Created = ?config(created_room, C),
+    true = is_pid(room_manager:get_room(Created)),
     C.
 
 -spec cant_create_existing_room(C :: config()) ->
     config().
 
 cant_create_existing_room(C) ->
-    Created = get(created_room, C),
+    Created = ?config(created_room, C),
     already_exists = room_manager:create_room(Created),
     C.
 
@@ -119,15 +117,15 @@ cant_create_existing_room(C) ->
     config().
 
 delete_room(C) ->
-    Created = get(created_room, C),
-    deleted = room_manager:delete_room(Created),
+    Created = ?config(created_room, C),
+    ok = room_manager:delete_room(Created),
     C.
 
 -spec cant_delete_nonexistent_room(C :: config()) ->
     config().
 
 cant_delete_nonexistent_room(C) ->
-    Created = get(created_room, C),
+    Created = ?config(created_room, C),
     not_found = room_manager:delete_room(Created),
     C.
 
@@ -135,14 +133,6 @@ cant_delete_nonexistent_room(C) ->
     config().
 
 cant_find_nonexistent_room(C) ->
-    Created = get(created_room, C),
+    Created = ?config(created_room, C),
     not_found = room_manager:get_room(Created),
     C.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
-
--spec get(Key :: atom(), List :: proplist()) ->
-    term() | undefined.
-
-get(Key, List) ->
-    proplists:get_value(Key, List).
