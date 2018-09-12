@@ -46,7 +46,7 @@ create_room(RoomId) ->
         {ok, _, _} ->
             ok;
         {error, Error} ->
-            lager:notice("Supervisor can't start child with ~p", [Error]),
+            ok = lager:error("Supervisor can't start child with ~p", [Error]),
             {error, Error}
     end.
 
@@ -74,7 +74,7 @@ init([]) ->
         intensity => 10,
         period => 10
     },
-    Server = #{  % Single room at the start
+    Server = #{  % Guarantee at least one room at the start
         id => <<"room1">>,
         type => worker,
         start => {chat_room, start_link, [<<"room1">>]}
