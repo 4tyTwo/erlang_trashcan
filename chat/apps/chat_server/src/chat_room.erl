@@ -13,6 +13,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% API EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -export([start_link/1]).
+-export([stop/1]).
 -export([send/2]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -23,23 +24,30 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec start_link(Id :: binary()) ->
+-spec start_link({Id :: binary(), Manager :: pid()}) ->
     {ok, pid()}.
 
-start_link(Id) ->
+start_link({Id, Manager}) ->
     ok = lager:notice("Chat room ~p start_link", [Id]),
-    gen_server:start_link({global, Id}, ?MODULE, Id, []).
+    gen_server:start_link(?MODULE, {Id, Manager}, []).
+
+-spec stop(PID :: pid()) ->
+    shutdown_ok.
+
+stop(PID) when is_pid(PID) ->
+    gen_server:call(PID, stop).
 
 -spec send(SourceMessage :: source_message(), Source :: pid()) ->
     no_return().
 
 send({_, _, _, RoomId} = SourceMessage, Source) ->
-    case room_manager:get_room(RoomId) of
-        not_found ->
+    case room_manager:room_exists(RoomId) of
+        false ->
             Reply = {error, <<>>, <<"NO ROOM">>, <<>>},
             ws_handler:send(Reply, Source);
-        _ ->
-            gen_server:cast({global, RoomId}, {source_message, SourceMessage, Source})
+        true ->
+            PID = room_manager:room_pid(RoomId),
+            gen_server:cast(PID, {source_message, SourceMessage, Source})
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -96,13 +104,13 @@ register_user(Username, PID, State) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% CALLBACK FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec init(Id :: binary()) ->
+-spec init({Id :: binary(), Manager :: pid()}) ->
     {ok, state()}.
 
-init(Id) ->
+init({Id, Manager}) ->
+    Manager ! {register, Id, self()},
     process_flag(trap_exit, true),
     ok = lager:notice("Initialized chat room"),
-    ok = room_manager:register_room(Id, self()),
     {ok, #{room => Id, connections => #{}}}.
 
 -spec handle_cast({source_message, source_message(), pid()}, State :: state()) ->
@@ -122,8 +130,11 @@ handle_cast({source_message, {register, Username, _Message, _RoomId}, Source}, S
     % It actuay works, even if client sends message immediatly after calling for registration, wow!
     {noreply, NewState}.
 
--spec handle_call(term(), term(), State :: state()) ->
-    {reply, ok, state()}.
+-spec handle_call(stop, term(), State :: state()) ->
+    {stop, normal, shutdown_ok, state()}.
+
+handle_call(stop, _From, State) ->
+    {stop, normal, shutdown_ok, State};
 
 handle_call(_, _, State) ->
     {reply, ok, State}.
@@ -138,7 +149,11 @@ handle_info({'DOWN', _, process, PID, _}, State) ->
     RoomId = this_room(State),
     Reply = {left, Username, <<>>, RoomId},
     broadcast(Reply, NewState),
-    {noreply, NewState}.
+    {noreply, NewState};
+
+handle_info(Msg, State) ->
+    ok = lager:notice("Chat room caught message ~p", [Msg]),
+    {noreply, State}.
 
 -spec terminate(term(), State :: state()) ->
     ok.
