@@ -19,7 +19,6 @@ create_cell_map(Problem) ->
   Keys = lists:seq(1,length(Values)),
   maps:from_list(lists:zip(Keys,Values)).
 
-
 rpn_fold(Acc,[],_) ->
   Acc;
 rpn_fold(Acc,[Head | Tail],Map) ->
@@ -28,16 +27,15 @@ rpn_fold(Acc,[Head | Tail],Map) ->
 count(Problem,Map) ->
   case is_integer(Problem)  of
     true ->
-    Res = Problem;
-  _Else ->
-    Normalized = string:tokens(Problem," "),
-    [Res] = rpn_fold([],Normalized,Map)
+      Res = Problem;
+    false ->
+      Normalized = string:tokens(Problem," "),
+      [Res] = rpn_fold([],Normalized,Map)
   end,
   Res.
 
 proceed_link(Link,Map) ->
   count(maps:get(list_to_integer(Link),Map),Map).
-
 
 rpn("$" ++ Link,Stack,Map) -> [proceed_link(Link,Map)] ++ Stack;
 rpn("+",[N1,N2 | Stack],_) -> [N1 + N2] ++ Stack;
