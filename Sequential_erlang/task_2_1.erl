@@ -1,4 +1,5 @@
 -module(task_2_1).
+
 -export([test/0]).
 
 -define(safe_handle(A), try A catch Class:Err:Stack ->
