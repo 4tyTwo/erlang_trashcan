@@ -1,4 +1,4 @@
--module(room_manager).
+-module(chat_server_room_manager).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% BEHAVIOUR EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -57,53 +57,49 @@ init(undefined) ->
     ok = lager:notice("Room manager initialized"),
     {ok, []}.
 
--spec handle_cast(term(), State :: stateless) ->
+-spec handle_cast(term(), RoomList :: list()) ->
     {noreply, list()}.
 
-handle_cast(_, State) ->
-    {noreply, State}.
+handle_cast(_, RoomList) ->
+    {noreply, RoomList}.
+
+-spec handle_call
+    ({create_room, Id :: binary}, _From :: term(), RoomList :: [binary()]) ->
+        {reply, ok | already_exists, stateless};
+    ({room_exists, Id :: binary}, _From :: term(), RoomList :: [binary()]) ->
+        {reply, boolean(), stateless};
+    ({delete_room, Id :: binary}, _From :: term(), RoomList :: [binary()]) ->
+        {reply, ok | not_found, stateless};
+    (rooms, _From :: term(), RoomList :: [binary()]) ->
+        {reply, [binary()], stateless}.
+
 
 handle_call({create_room, Id}, _From, RoomList) ->
-    Reply = case is_in_list(Id, RoomList) of
+    {Reply, NewRoomList} = case lists:member(Id, RoomList) of
         false ->
             ok = lager:info("Creating room ~p", [Id]),
-            NewRoomList = [Id | RoomList],
-            ok;
+            {ok, [Id | RoomList]};
         true ->
             ok = lager:info("Can't create room ~p, already_exists", [Id]),
-            NewRoomList = RoomList,
-            already_exists
+            {already_exists, RoomList}
     end,
     {reply, Reply, NewRoomList};
 
 handle_call({room_exists, Id}, _From, RoomList) ->
     ok = lager:info("Checking if room ~p exists", [Id]),
-    Reply = is_in_list(Id, RoomList),
+    Reply = lists:member(Id, RoomList),
     {reply, Reply, RoomList};
 
 handle_call({delete_room, Id}, _From, RoomList) ->
-    Reply = case is_in_list(Id, RoomList) of
+    {Reply, NewRoomList} = case lists:member(Id, RoomList) of
         true ->
             ok = lager:info("Deleting room ~p", [Id]),
-            NewRoomList = lists:delete(Id, RoomList),
-            ok;
+            {ok, lists:delete(Id, RoomList)};
         false ->
             ok = lager:info("Can't delete room ~p, not_found", [Id]),
-            NewRoomList = RoomList,
-            not_found
+            {not_found, RoomList}
     end,
     {reply, Reply, NewRoomList};
 
 handle_call(rooms, _From, RoomList) ->
     {reply, RoomList, RoomList}.
-
-%%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
-
-is_in_list(Item, List) -> % Возможно вынести в library
-    ok = lager:info("Room manager searching for ~p in ~p", [Item, List]),
-    case [Elem || Elem <- List, Elem == Item] of
-        [] ->
-            false;
-        _ ->
-            true
-    end.
