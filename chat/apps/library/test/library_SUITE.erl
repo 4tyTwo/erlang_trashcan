@@ -4,16 +4,22 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% API EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--compile([export_all]).
+%% tests descriptions
+
+-export([all           /0]).
+-export([init_per_suite/1]).
+-export([end_per_suite /1]).
+
+%% tests
+
+-export([symmetry   /1]).
+-export([encode_json/1]).
+-export([decode_json/1]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MACROSES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--define(NOT_SUBSCRIBED_ERROR,  {error, <<>>, <<"NOT JOINED TO THE ROOM">>, <<>>}).
--define(ALREADY_SUBSCRIBED_ERROR, {error, <<>>, <<"ALREADY IN THE ROOM">>, <<>>}).
--define(ALREADY_EXISTS_ERROR,     {error, <<>>, <<"ROOM ALREADY EXISTS">>, <<>>}).
--define(NO_ROOM_ERROR,                        {error, <<>>, <<"NO ROOM">>, <<>>}).
--define(DECODED_MSG,                 {leave, <<"Igor">>, <<"Hello">>, <<"rm1">>}).
--define(ENCODED_MSG, <<"{\"user\":\"Igor\",\"room\":\"rm1\",\"message\":\"Hello\",\"event\":\"leave\"}">>).
+-define(ENCODED_MSG, <<"{\"user\":\"Igor\",\"text\":\"\",\"room\":\"rm1\",\"event\":\"leave\"}">>).
+-define(DECODED_MSG,                                               {leave, <<"Igor">>, <<"rm1">>}).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -28,8 +34,7 @@ all() ->
     [
         encode_json,
         decode_json,
-        symmetry,
-        error_matching
+        symmetry
     ].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%% SUITE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -66,12 +71,3 @@ decode_json(_C) ->
 
 symmetry(_C) ->
     ?DECODED_MSG = library_protocol:decode(library_protocol:encode(?DECODED_MSG)).
-
--spec error_matching(C :: config()) ->
-    term().
-
-error_matching(_C) ->
-    no_room = library_protocol:match_error(?NO_ROOM_ERROR),
-    already_exists = library_protocol:match_error(?ALREADY_EXISTS_ERROR),
-    already_joined = library_protocol:match_error(?ALREADY_SUBSCRIBED_ERROR),
-    not_joined = library_protocol:match_error(?NOT_SUBSCRIBED_ERROR).

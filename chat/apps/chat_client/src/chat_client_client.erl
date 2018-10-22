@@ -26,10 +26,8 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--type message_list() :: [library_protocol:source_message()].
 -type state() :: #{
-    pid := pid(),
-    connected := boolean(),
+    pid => pid(),
     username := binary(),
     message_list := message_list(),
     host := host(),
@@ -37,10 +35,11 @@
     pending => pending() % 'From' to send reply to and Message that is expected
 }.
 
--type from() :: {pid(), term()}.
 -type host() :: string().
+-type from() :: {pid(), term()}.
 -type connection_port() :: non_neg_integer().
--type pending() :: {from(), library_protocol:source_message()}.
+-type message_list() :: [library_protocol:message()].
+-type pending() :: {from(), library_protocol:message()}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -63,7 +62,7 @@ set_username(PID, Username) ->
     ok = gen_server:call(PID, {set_username, Username}).
 
 -spec join(PID :: pid(), RoomId :: library_protocol:room()) ->
-    ok.
+    ok | {error, not_exists}.
 
 join(PID, RoomId) ->
     gen_server:call(PID, {join, RoomId}).
@@ -87,7 +86,7 @@ delete(PID, RoomId) ->
     gen_server:call(PID, {delete, RoomId}).
 
 -spec get_last_message(PID :: pid()) ->
-    library_protocol:source_message().
+    library_protocol:message().
 
 get_last_message(PID) ->
     ok = lager:debug("Process ~p called get_last_message", [PID]),
@@ -96,40 +95,38 @@ get_last_message(PID) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%% CALLBACK FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -spec init({Host :: host(), Port :: connection_port()}) ->
-    {ok, state()}.
+    no_return().
 
 init({Host, Port}) ->
-    {ok,
-        #{
-            connected => false,
-            host => Host,
-            port => Port,
-            username => ?DEFAULT_USERNAME,
-            message_list => [],
-            pending => undefined
-        }
-    }.
+    State = ws_connect(#{
+        host => Host,
+        port => Port,
+        username => ?DEFAULT_USERNAME,
+        message_list => []
+    }),
+    {ok, State}.
 
 -spec handle_call
-    ({library_protocol:active_event() | set_username, RoomId :: library_protocol:room()}, From :: from(), State :: state()) ->
+    ({library_protocol:event() | set_username, RoomId :: library_protocol:room()}, From :: from(), State :: state()) ->
         {reply, ok, state()};
     (pop_message, From :: from(), State :: state()) ->
-        {reply, library_protocol:source_message() | undefined, state()}.
+        {reply, library_protocol:message() | undefined, state()}.
 
 
 handle_call({set_username, Username}, _From, State) ->
     {reply, ok, State#{username => Username}};
 
 handle_call({Event, RoomId}, From, State) ->
-    NewState = handle_request(Event, <<>>, RoomId, From, State),
+    ok = lager:debug("Client triggered {~p, ~p}", [Event, RoomId]),
+    NewState = handle_request(Event, RoomId, From, State),
     {noreply, NewState};
 
 handle_call({send_message, Message, RoomId}, From, State) ->
-    NewState = handle_request(send_message, Message, RoomId, From, State),
+    NewState = handle_request({message, Message}, RoomId, From, State),
     {noreply, NewState};
 
 handle_call(pop_message, _From, #{username := Username, message_list := MessageList} = State) ->
-    ok = lager:info("User ~p asked for received messages", [Username]),
+    ok = lager:debug("User ~p asked for received messages", [Username]),
     {Message, Tail} = pop_message(MessageList),
     {reply, Message, State#{message_list => Tail}};
 
@@ -149,14 +146,16 @@ handle_info({gun_ws, _, _, {text, Json}}, #{pending := {From, ExpectedMessage}} 
     Message = library_protocol:decode(Json),
     ok = lager:info("Caught a message: ~p", [Message]),
     ok = lager:info("Message ~p is currently pending", [ExpectedMessage]),
-    case Message of
+    NewState = case Message of
         ExpectedMessage ->
             NewState0 = push_message(Message, State),
-            NewState = maps:remove(pending, NewState0),
-            gen_server:reply(From, ok);
+            gen_server:reply(From, ok),
+            maps:remove(pending, NewState0);
+        Error = {error, _} ->
+            gen_server:reply(From, Error),
+            maps:remove(pending, State);
         _ ->
-            NewState = maps:remove(pending, State),
-            gen_server:reply(From, library_protocol:match_error(Message))
+            State
     end,
     {noreply, NewState};
 
@@ -171,26 +170,18 @@ handle_info(_, State) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-handle_request(Event, Text, RoomId, From, #{username := Username} = State) ->
-    NewState = ensure_connected(State),
-    ok = lager:info("User ~p wants to send message to room ~p", [Username, RoomId]),
-    Message = {Event, Username, Text, RoomId},
-    #{pid := PID} = NewState,
-    ok = send_message(Message, PID),
-    NewState#{pending => {From, Message}}.
-
--spec ensure_connected(State :: state()) ->
+-spec handle_request(library_protocol:event(), library_protocol:room(), {pid(), term()}, state()) ->
     state().
 
-ensure_connected(#{connected := Connected} = State) ->
-    case Connected of
-        true ->
-            State;
-        false ->
-            ws_connect(State)
-    end.
+handle_request(Event, RoomId, From, #{username := Username} = State) ->
+    ok = lager:info("User ~p wants to send message to room ~p", [Username, RoomId]),
+    Message = {Event, Username, RoomId},
+    ok = lager:debug("Message being sent: ~p", [Message]),
+    #{pid := PID} = State,
+    ok = send_message(Message, PID),
+    State#{pending => {From, Message}}.
 
--spec send_message(Message :: library_protocol:source_message(), PID :: pid()) ->
+-spec send_message(Message :: library_protocol:message(), PID :: pid()) ->
     ok.
 
 send_message(Message, PID) ->
@@ -198,15 +189,15 @@ send_message(Message, PID) ->
     ok = lager:info("Sending message ~p throught websocket", [Json]),
     ok = gun:ws_send(PID, {text, Json}).
 
--spec push_message(Message :: library_protocol:source_message(), State :: state()) ->
+-spec push_message(Message :: library_protocol:message(), State :: state()) ->
     state().
 
 push_message(Message, #{message_list := MessageList} = State) ->
     NewMessageList = [Message | MessageList],
     State#{message_list => NewMessageList}.
 
--spec pop_message([library_protocol:source_message()]) ->
-        {library_protocol:source_message() | undefined, list()}.
+-spec pop_message([library_protocol:message()]) ->
+        {library_protocol:message() | undefined, list()}.
 
 pop_message([]) ->
     {undefined, []};
@@ -217,8 +208,8 @@ pop_message([Head | Tail]) ->
 -spec ws_connect(State :: state()) ->
     state().
 
-ws_connect(#{connected := false, host := Host, port := Port} = State) ->
-    {ok, Pid} = gun:open(Host, Port),
+ws_connect(#{host := Host, port := Port} = State) ->
+    {ok, Pid} = gun:open(Host, Port, #{retry => 0}),
     {ok, _} = gun:await_up(Pid),
     ok = lager:info("Connection to ~p:~p established, perfoming upgrade", [Host, Port]),
     _ = gun:ws_upgrade(Pid, "/websocket"),
@@ -232,4 +223,5 @@ ws_connect(#{connected := false, host := Host, port := Port} = State) ->
     after 1000 ->
         exit(timeout)
     end,
-    State#{pid => Pid, connected => true}.
+    link(Pid),
+    State#{pid => Pid}.

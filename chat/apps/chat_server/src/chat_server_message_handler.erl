@@ -2,25 +2,25 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% API EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--export([handle_message/2]).
+-export([handle_message    /2]).
+-export([handle_gproc_event/2]).
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MACROSES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPE EXPORT %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--define(NOT_SUBSCRIBED_REPLY,  {error, <<>>, <<"NOT JOINED TO THE ROOM">>, <<>>}).
--define(ALREADY_EXISTS_REPLY,     {error, <<>>, <<"ROOM ALREADY EXISTS">>, <<>>}).
--define(ALREADY_SUBSCRIBED_REPLY, {error, <<>>, <<"ALREADY IN THE ROOM">>, <<>>}).
--define(NO_ROOM_REPLY,                        {error, <<>>, <<"NO ROOM">>, <<>>}).
+-export_type([subscribers/0]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--type error() :: no_room | not_subscribed | already_subscribed | already_exists.
+-type room()  ::  library_protocol:room().
+-type error() :: library_protocol:error().
+-type subscribers() ::  [room()].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% API %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec handle_message(library_protocol:source_message(), Subs :: chat_server_ws_handler:state()) ->
-    chat_server_ws_handler:state().
+-spec handle_message(library_protocol:message(), Subs :: subscribers()) ->
+    {ok, subscribers()} | error().
 
-handle_message(Message = {join, Username, _, Room}, Subs) ->
+handle_message(Message = {join, Username, Room}, Subs) ->
     ok = lager:info("User ~p wants to join room ~p", [Username, Room]),
     case resolve_join_room(Room, Subs) of
         ok ->
@@ -28,88 +28,80 @@ handle_message(Message = {join, Username, _, Room}, Subs) ->
             gproc_ps:publish(l, Room, Message),
             NewSubs = [Room | Subs],
             ok = lager:debug("User ~p joined room ~p, he is in rooms ~p now", [Username, Room, NewSubs]),
-            NewSubs;
+            {ok, NewSubs};
         Else ->
-            send_error_message(Else),
-            Subs
+            {error, Else}
     end;
 
-handle_message(Message = {send_message, Username, _, Room}, Subs) ->
+handle_message(Message = {{message, _}, Username, Room}, Subs) ->
     ok = lager:info("User ~p wants to send ~p to room ~p", [Username, Message, Room]),
     case lists:member(Room, Subs) of
         true ->
             gproc_ps:publish(l, Room, Message),
-            ok = lager:info("User ~p sent message ~p to room ~p",[Username, Message, Room]);
+            ok = lager:info("User ~p sent message ~p to room ~p",[Username, Message, Room]),
+            {ok, Subs};
         false ->
-            send_error_message(not_subscribed)
-    end,
-    Subs;
+            {error, not_joined}
+    end;
 
 
-handle_message(Message = {leave, Username, _, Room}, Subs) ->
+handle_message(Message = {leave, Username, Room}, Subs) ->
     ok = lager:info("User ~p wants to leave room ~p", [Username, Room]),
     case lists:member(Room, Subs) of
         true ->
-            gproc_ps:unsubscribe(l, Room),
             gproc_ps:publish(l, Room, Message),
+            gproc_ps:unsubscribe(l, Room),
             NewSubs = lists:delete(Room, Subs),
             ok = lager:info("User ~p left room ~p, he is in rooms ~p now", [Username, Room, NewSubs]),
-            NewSubs;
+            {ok, NewSubs};
         false ->
-            send_error_message(not_subscribed),
-            Subs
+            {error, not_joined}
     end;
 
-handle_message({create, Username, _, Room}, Subs) ->
+handle_message(Message = {create, Username, Room}, Subs) ->
     ok = lager:info("User ~p wants to create room ~p", [Username, Room]),
     case chat_server_room_manager:create_room(Room) of
         ok ->
             gproc_ps:subscribe(l, Room),
-            CreateMessage = {create, Username, <<>>, Room},
-            gproc_ps:publish(l, Room, CreateMessage),
+            gproc_ps:publish(l, Room, Message),
             NewSubs = [Room | Subs],
             ok = lager:info("User ~p joined room ~p, he is in rooms ~p now", [Username, Room, NewSubs]),
-            NewSubs;
+            {ok, NewSubs};
         already_exists ->
-            send_error_message(already_exists),
-            Subs
+            {error, already_exists}
     end;
 
-handle_message(Message = {delete, Username, _, Room}, Subs) ->
+handle_message(Message = {delete, Username, Room}, Subs) ->
     ok = lager:info("User ~p wants to delete room ~p", [Username, Room]),
     case lists:member(Room, Subs) of
         true ->
-            gproc_ps:publish(l, Room, Message),
-            gproc_ps:unsubscribe(l, Room),
+            gproc_ps:publish(l, Room, Message), % Alerting everyone
             ok = chat_server_room_manager:delete_room(Room),
-            lists:delete(Room, Subs);
+            NewSubs = lists:delete(Room, Subs),
+            {ok, NewSubs};
         false ->
-            send_error_message(not_subscribed),
-            Subs
+            {error, not_joined}
     end;
 
 handle_message(_, Subs) ->
     Subs.
 
+-spec handle_gproc_event({gproc_ps_event, room(), library_protocol:message()}, subscribers()) ->
+    subscribers().
+
+handle_gproc_event({gproc_ps_event, Room, Message = {delete, _, _}}, Subs) ->
+    ok = lager:debug("gproc_ps_event: ~p", [Message]),
+    gproc_ps:unsubscribe(l, Room),
+    lists:delete(Room, Subs);
+
+handle_gproc_event({gproc_ps_event, _Room, Message}, Subs) ->
+    ok = lager:debug("gproc_ps_event: ~p", [Message]),
+    Subs.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
--spec send_error_message(error()) ->
-    ok.
-
-send_error_message(no_room) ->
-    chat_server_ws_handler:send(?NO_ROOM_REPLY, self());
-
-send_error_message(already_subscribed) ->
-    chat_server_ws_handler:send(?ALREADY_SUBSCRIBED_REPLY, self());
-
-send_error_message(not_subscribed) ->
-    chat_server_ws_handler:send(?NOT_SUBSCRIBED_REPLY, self());
-
-send_error_message(already_exists) ->
-    chat_server_ws_handler:send(?ALREADY_EXISTS_REPLY, self()).
-
 -spec resolve_join_room(Room :: binary(), Subscriptions :: [binary()]) ->
-    ok | no_room | already_subscribed.
+    ok | not_exists | already_joined.
 
 resolve_join_room(Room, Subscriptions) ->
     case lists:member(Room, Subscriptions) of % If not already subscribed
@@ -118,8 +110,8 @@ resolve_join_room(Room, Subscriptions) ->
                 true ->
                     ok;
                 false ->
-                    no_room
+                    not_exists
             end;
         true ->
-            already_subscribed
+            already_joined
     end.
