@@ -43,26 +43,17 @@ websocket_handle({text, Json}, Subs) ->
             {reply, {text, library_protocol:encode(ErrorMessage)}, Subs} % Not sure if it's OK
     end;
 
-
-websocket_handle(_Data, Subs) ->
+websocket_handle(_, Subs) ->
     {ok, Subs}.
 
--spec websocket_info
-    ({send, library_protocol:message()}, Subs :: state()) ->
-        {reply, {text, jiffy:json_value()}, state()};
-    ({gproc_ps_event, Room :: binary(), Message :: library_protocol:message()}, Subs :: state()) ->
-        {reply, {text, jiffy:json_value()}, state()}.
+-spec websocket_info(term(), Subs :: state()) ->
+    {reply, {text, jiffy:json_value()}, state()}.
 
-websocket_info({gproc_ps_event, _Room, Message} = GprocEvent, Subs) ->
-    ok = lager:debug("gproc_ps_event, Websocket info: ~p", [Message]),
-    NewSubs = chat_server_message_handler:handle_gproc_event(GprocEvent, Subs),
-    Json = library_protocol:encode(Message),
-    {reply, {text, Json}, NewSubs};
-
-websocket_info({send, Message}, Subs) ->
-    ok = lager:debug("send, Websocket info: ~p", [Message]),
-    Json = library_protocol:encode(Message),
-    {reply, {text, Json}, Subs}.
+websocket_info(Event, Subs) ->
+    ok = lager:debug("ws_handler caught an event ~p", [Event]),
+    {EventBody, NewSubs} = chat_server_message_handler:handle_event(Event, Subs),
+    Json = library_protocol:encode(EventBody),
+    {reply, {text, Json}, NewSubs}.
 
 -spec terminate(_Reason :: term(), _Req :: map(), Subs :: state()) ->
     ok.

@@ -18,7 +18,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TYPES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -type group_name() :: atom().
--type bot_opts() ::test_bot:bot_opts().
+-type bot_opts() :: test_bot:bot_opts().
 -type config() :: [{atom(), term()}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MACROSES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -30,9 +30,10 @@
 -define(ROOM,     <<"room1">>).
 -define(HOST,     "localhost").
 -define(PORT,            8080).
--define(TIMEOUT,           20).
+-define(DELAY,             20).
+-define(SPREAD,            20).
 -define(ACTIONS_NUMBER,    20).
--define(CRITICAL_TIMEOUT, ?TIMEOUT * ?ACTIONS_NUMBER * 2).
+-define(CRITICAL_TIMEOUT, (?DELAY + ?SPREAD) * ?ACTIONS_NUMBER * 2).
 
 % Probability maps
 
@@ -58,7 +59,7 @@
     [{group, group_name()}].
 
 all() ->
-     [mega_test, randomized_multiclient_test].
+    [mega_test, randomized_multiclient_test].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%% SUITE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -96,10 +97,9 @@ mega_test(_C) ->
     term().
 
 randomized_multiclient_test(_C) ->
-    Vars = setup_variables(),
-    PIDs = monitor(Vars),
-    ct:log("Created processes ~p", [PIDs]),
-    collect(PIDs).
+    BotOptsList = setup_variables(),
+    PIDs = start_and_monitor_bots(BotOptsList),
+    lists:foreach(fun collect_process/1, PIDs).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%% PRIVATE FUNCTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -107,40 +107,37 @@ randomized_multiclient_test(_C) ->
     [bot_opts()].
 
 setup_variables() ->
+    ConOpts = {?HOST, ?PORT},
     Rooms  = [<<"room1">>, <<"room2">>],
     Names  = [<<"Adam">>, <<"Betty">>, <<"Charlie">>, <<"Donald">>, <<"Edna">>],
-    ConOpts = {?HOST, ?PORT},
     [
         #{
+            name  => Item,
             rooms => Rooms,
-            name => Item,
-            timeout => ?TIMEOUT,
+            delay => {?DELAY, ?SPREAD},
             nodes => ?NODE_MAP,
-            actions_left => ?ACTIONS_NUMBER,
+            con_opts => ConOpts,
             initial_action => create,
-            con_opts => ConOpts
+            actions_left => ?ACTIONS_NUMBER
         } || Item <- Names
     ].
 
--spec monitor(bot_opts()) ->
+-spec start_and_monitor_bots([bot_opts()]) ->
     [pid()].
 
-monitor(Vars) ->
-    OkPIds = [test_bot:start_link(Item) || Item <- Vars],
-    PIDs = [Item || {ok, Item} <- OkPIds],
+start_and_monitor_bots(BotOptsList) ->
+    OkPids = lists:map(fun test_bot:start_link/1, BotOptsList),
+    PIDs = [Item || {ok, Item} <- OkPids],
     [erlang:monitor(process, Item) || Item <- PIDs],
     PIDs.
 
--spec collect([pid()]) ->
-        ok.
+-spec collect_process(pid()) ->
+    ok.
 
-collect([]) -> ok;
-
-collect([PID | Tail]) ->
+collect_process(PID) ->
     receive
         {'DOWN', _, process, PID, normal} ->
-            ct:log("Collected process ~p", [PID]),
-            collect(Tail)
+            ok
     after ?CRITICAL_TIMEOUT ->
         error(timeout)
     end.
